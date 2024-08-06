@@ -178,6 +178,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase, IPayoutHandler
                         messageBus.NotifyBlockUnlocked(poolConfig.Id, block, coin);
                     }
                     }
+                    }
                     continue;
                 }
 
@@ -267,7 +268,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase, IPayoutHandler
 
         return result.ToArray();
     }
-
+}
     public override async Task<decimal> UpdateBlockRewardBalancesAsync(IDbConnection con, IDbTransaction tx, IMiningPool pool, Block block, CancellationToken ct)
     {
         var blockRewardRemaining = await base.UpdateBlockRewardBalancesAsync(con, tx, pool, block, ct);
