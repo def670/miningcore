@@ -177,8 +177,7 @@ public class EthereumPayoutHandler : PayoutHandlerBase, IPayoutHandler
 
                         messageBus.NotifyBlockUnlocked(poolConfig.Id, block, coin);
                     }
-                   }
-                   }
+                    }
                     continue;
                 }
 
