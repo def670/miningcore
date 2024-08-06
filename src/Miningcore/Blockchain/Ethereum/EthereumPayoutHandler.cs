@@ -24,8 +24,7 @@ using EC = Miningcore.Blockchain.Ethereum.EthCommands;
 namespace Miningcore.Blockchain.Ethereum;
 
 [CoinFamily(CoinFamily.Ethereum)]
-public class EthereumPayoutHandler : PayoutHandlerBase,
-    IPayoutHandler
+public class EthereumPayoutHandler : PayoutHandlerBase, IPayoutHandler
 {
     public EthereumPayoutHandler(
         IComponentContext ctx,
@@ -66,7 +65,6 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
 
         logger = LogUtil.GetPoolScopedLogger(typeof(EthereumPayoutHandler), pc);
 
-        // configure standard daemon
         var jsonSerializerSettings = ctx.Resolve<JsonSerializerSettings>();
 
         rpcClient = new RpcClient(pc.Daemons.First(x => string.IsNullOrEmpty(x.Category)), jsonSerializerSettings, messageBus, pc.Id);
@@ -78,6 +76,10 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
     {
         Contract.RequiresNonNull(poolConfig);
         Contract.RequiresNonNull(blocks);
+
+        var enoughPeers = await EnsureDaemonsSynchedAsync(ct);
+        if (!enoughPeers)
+            return blocks;
 
         var coin = poolConfig.Template.As<EthereumCoinTemplate>();
         var pageSize = 100;
@@ -117,14 +119,45 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
                     // mature?
                     if(latestBlockHeight - block.BlockHeight >= EthereumConstants.MinConfimations)
                     {
+                                        {
+                        uint totalDuplicateBlock = await cf.Run(con => blockRepo.GetPoolDuplicateBlockCountByPoolHeightNoTypeAndStatusAsync(con, poolConfig.Id, Convert.ToInt64(block.BlockHeight), new[]
+                        {
+                            block.Status
+                        }));
+                        uint totalDuplicateBlockAfter = 0;
+
+                        if (totalDuplicateBlock > 1)
+                        {
+                            totalDuplicateBlockAfter = await cf.Run(con => blockRepo.GetPoolDuplicateBlockAfterCountByPoolHeightNoTypeAndStatusAsync(con, poolConfig.Id, Convert.ToInt64(block.BlockHeight), new[]
+                            {
+                                block.Status
+                            }, block.Created));
+                        }
+
+                        if (totalDuplicateBlock > 1 && totalDuplicateBlockAfter > 0)
+                        {
+                            block.Reward = GetUncleReward(chainType, block.BlockHeight, block.BlockHeight);
+                            block.Status = BlockStatus.Confirmed;
+                            block.ConfirmationProgress = 1;
+                            block.BlockHeight = (ulong)blockInfo.Height;
+                            block.Type = EthereumConstants.BlockTypeUncle;
+
+                            messageBus.NotifyBlockUnlocked(poolConfig.Id, block, coin);
+                        }
+                        else
+                        {
                         var blockHashResponse = await rpcClient.ExecuteAsync<DaemonResponses.Block>(logger, EC.GetBlockByNumber, ct,
                             new[] { (object) block.BlockHeight.ToStringHexWithPrefix(), true });
+                    var blockMiner = blockHashResponse.Response.Miner;
+                    
+                    if (string.Equals(blockMiner, poolConfig.Address, StringComparison.OrdinalIgnoreCase))
+                    {
                         var blockHash = blockHashResponse.Response.Hash;
                         var baseGas = blockHashResponse.Response.BaseFeePerGas;
                         var gasUsed = blockHashResponse.Response.GasUsed;
 
                         var burnedFee = (decimal) 0;
-                        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "Main" || extraPoolConfig?.ChainTypeOverride == "MainPow" || extraPoolConfig?.ChainTypeOverride == "EtherOne" || extraPoolConfig?.ChainTypeOverride == "Pink")
+                        if(extraPoolConfig?.ChainTypeOverride == "Ethereum" || extraPoolConfig?.ChainTypeOverride == "Main" || extraPoolConfig?.ChainTypeOverride == "MainPow" || extraPoolConfig?.ChainTypeOverride == "Etho" || extraPoolConfig?.ChainTypeOverride == "Egaz" || extraPoolConfig?.ChainTypeOverride == "EtherOne" || extraPoolConfig?.ChainTypeOverride == "Pink")
                             burnedFee = (baseGas * gasUsed / EthereumConstants.Wei);
 
                         block.Hash = blockHash;
@@ -144,7 +177,8 @@ public class EthereumPayoutHandler : PayoutHandlerBase,
 
                         messageBus.NotifyBlockUnlocked(poolConfig.Id, block, coin);
                     }
-
+                   }
+                   }
                     continue;
                 }
 
