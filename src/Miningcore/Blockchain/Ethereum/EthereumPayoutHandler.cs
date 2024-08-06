@@ -77,9 +77,9 @@ public class EthereumPayoutHandler : PayoutHandlerBase, IPayoutHandler
         Contract.RequiresNonNull(poolConfig);
         Contract.RequiresNonNull(blocks);
 
-        var enoughPeers = await EnsureDaemonsSynchedAsync(ct);
-        if (!enoughPeers)
-            return blocks;
+//        var enoughPeers = await EnsureDaemonsSynchedAsync(ct);
+//        if (!enoughPeers)
+//            return blocks;
 
         var coin = poolConfig.Template.As<EthereumCoinTemplate>();
         var pageSize = 100;
